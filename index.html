@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<!-- Mode gelap di-force -->
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tebak Kata (Harian)</title>
+    <!-- Memuat Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Memuat font Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Menggunakan font Inter sebagai default */
+        body {
+            font-family: 'Inter', sans-serif;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* Status kotak tebakan */
+        .tile-correct {
+            background-color: #6aaa64 !important; /* Hijau */
+            border-color: #6aaa64 !important;
+            color: white !important;
+            transform: rotateX(360deg);
+            transition: transform 0.6s;
+        }
+        .tile-present {
+            background-color: #c9b458 !important; /* Kuning */
+            border-color: #c9b458 !important;
+            color: white !important;
+            transform: rotateX(360deg);
+            transition: transform 0.6s 0.1s;
+        }
+        .tile-absent {
+            background-color: #787c7e !important; /* Abu-abu */
+            border-color: #787c7e !important;
+            color: white !important;
+            transform: rotateX(360deg);
+            transition: transform 0.6s 0.2s;
+        }
+        
+        /* Animasi flip */
+        .tile.flip {
+            transform: rotateX(360deg);
+            transition: transform 0.6s;
+        }
+
+        /* Animasi goyang (shake) untuk kata tidak valid */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        .shake {
+            animation: shake 0.5s ease-in-out;
+        }
+
+        /* Status tombol keyboard */
+        .key-correct {
+            background-color: #6aaa64 !important;
+            color: white !important;
+        }
+        .key-present {
+            background-color: #c9b458 !important;
+            color: white !important;
+        }
+        /* Warna .key-absent dibuat jauh lebih gelap agar kontras */
+        .key-absent {
+            background-color: #374151 !important; /* Abu-abu Gelap (Setara gray-700) */
+            color: white !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col items-center justify-between min-h-screen p-4">
+
+    <!-- Header -->
+    <header class="text-center my-4 w-full max-w-lg relative">
+        <h1 class="text-4xl font-extrabold tracking-tight dark:text-white">TEBAK KATA</h1>
+        <p class="text-gray-600 dark:text-gray-400">Versi Bahasa Indonesia (Harian)</p>
+        
+        <!-- Tombol Reset (DEV) -->
+        <button id="dev-reset-button" class="absolute right-0 top-0 text-xs text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 font-medium py-1 px-2 rounded-md bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
+            [Dev: Reset]
+        </button>
+
+        <!-- Bagian Statistik -->
+        <div id="stats-container" class="grid grid-cols-4 gap-2 mt-4 text-gray-800 dark:text-white">
+            <div class="bg-gray-200 dark:bg-gray-700 p-2 rounded-lg text-center">
+                <div id="stat-streak" class="text-2xl font-bold">0</div>
+                <div class="text-xs uppercase">Streak</div>
+            </div>
+            <div class="bg-gray-200 dark:bg-gray-700 p-2 rounded-lg text-center">
+                <div id="stat-max-streak" class="text-2xl font-bold">0</div>
+                <div class="text-xs uppercase">Max</div>
+            </div>
+            <div class="bg-gray-200 dark:bg-gray-700 p-2 rounded-lg text-center">
+                <div id="stat-played" class="text-2xl font-bold">0</div>
+                <div class="text-xs uppercase">Main</div>
+            </div>
+            <div class="bg-gray-200 dark:bg-gray-700 p-2 rounded-lg text-center">
+                <div id="stat-win-pct" class="text-2xl font-bold">0</div>
+                <div class="text-xs uppercase">% Menang</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Area Pesan (untuk notifikasi) -->
+    <div id="message-container" class="my-2 flex items-center justify-center w-full max-w-md">
+        <div id="message" class="px-4 py-2 rounded-md font-medium text-white w-full"></div>
+    </div>
+
+    <!-- Papan Permainan -->
+    <main id="game-board" class="grid grid-cols-5 gap-1.5 mb-4">
+        <!-- Kotak-kotak akan digenerate oleh JavaScript -->
+    </main>
+
+    <!-- Keyboard Virtual -->
+    <footer id="keyboard" class="w-full max-w-lg mt-4">
+        <!-- Baris keyboard akan digenerate oleh JavaScript -->
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+
+            // Variabel daftar kata utama (akan diisi dari CSV)
+            let TARGET_WORDS = [];
+            let VALID_GUESSES = [];
+            // Map untuk menyimpan detail kata (kelas dan makna)
+            let wordDetails = new Map();
+
+            // Variabel status permainan
+            let targetWord = "";
+            let currentRow = 0;
+            let currentCol = 0;
+            let isGameOver = false;
+            let guesses = Array(6).fill(null).map(() => Array(5).fill(""));
+            let keyStates = {}; // Untuk menyimpan status warna keyboard
+
+            // --- LOGIKA KATA HARIAN & STATISTIK ---
+            const GAME_EPOCH = new Date(2025, 10, 1); // 1 November 2025
+            const MS_PER_DAY = 86400000;
+            
+            function getDayIndex(date) {
+                const start = new Date(GAME_EPOCH);
+                start.setHours(0, 0, 0, 0); // Set ke awal hari
+                const today = new Date(date);
+                today.setHours(0, 0, 0, 0); // Set ke awal hari
+                return Math.floor((today - start) / MS_PER_DAY);
+            }
+            
+            let dayIndex = getDayIndex(new Date());
+            const DAILY_STORAGE_KEY = 'tebak-kata-state';
+            const STATS_STORAGE_KEY = 'tebak-kata-stats';
+            // --- AKHIR LOGIKA ---
+
+
+            // Elemen DOM
+            const gameBoard = document.getElementById('game-board');
+            const keyboardContainer = document.getElementById('keyboard');
+            const messageEl = document.getElementById('message');
+            const messageContainer = document.getElementById('message-container');
+            
+            // Elemen DOM Statistik
+            const statStreakEl = document.getElementById('stat-streak');
+            const statMaxStreakEl = document.getElementById('stat-max-streak');
+            const statPlayedEl = document.getElementById('stat-played');
+            const statWinPctEl = document.getElementById('stat-win-pct');
+            const devResetButton = document.getElementById('dev-reset-button');
+
+            // Layout keyboard
+            const keys = [
+                "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P",
+                "A", "S", "D", "F", "G", "H", "J", "K", "L",
+                "ENTER", "Z", "X", "C", "V", "B", "N", "M", "BACKSPACE"
+            ];
+
+            // Fungsi memuat dan mem-parsing CSV
+            async function loadWordsFromCSV() {
+                try {
+                    const response = await fetch('kbbi_v.csv'); 
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    const csvText = await response.text();
+                    
+                    const lines = csvText.split('\n');
+                    const wordSet = new Set();
+                    const regex = /^[A-Z]{5}$/; 
+
+                    for (let i = 1; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (!line) continue;
+                        
+                        // Parser CSV sederhana yang menangani tanda kutip
+                        const columns = [];
+                        let inQuote = false;
+                        let cell = '';
+                        for (let j = 0; j < line.length; j++) {
+                            const char = line[j];
+                            if (char === '"') {
+                                inQuote = !inQuote;
+                            }
+                            if (char === ',' && !inQuote) {
+                                columns.push(cell);
+                                cell = '';
+                            } else {
+                                cell += char;
+                            }
+                        }
+                        columns.push(cell); 
+
+                        if (columns.length < 9) continue; 
+                        
+                        const word = columns[0].trim().toUpperCase().replace(/"/g, '');
+                        const wordClass = columns[7] ? columns[7].trim().replace(/"/g, '') : "N/A";
+                        const wordDef = columns[8] ? columns[8].trim().replace(/"/g, '') : "N/A";
+
+                        // Hanya terima kata 5 huruf A-Z murni
+                        if (regex.test(word)) {
+                            if (!wordDetails.has(word)) {
+                                wordSet.add(word);
+                                wordDetails.set(word, { class: wordClass, definition: wordDef });
+                            }
+                        }
+                    }
+
+                    const words = Array.from(wordSet);
+
+                    if (words.length < 50) { 
+                        console.warn(`Hanya ${words.length} kata valid (5 huruf A-Z) ditemukan di CSV.`);
+                        throw new Error('Data KBBI tidak memadai atau kata 5 huruf tidak ditemukan.');
+                    }
+                    
+                    // Kita sort agar urutan kata harian konsisten
+                    words.sort(); 
+                    TARGET_WORDS = [...words];
+                    VALID_GUESSES = [...words];
+                    
+                    console.log(`Berhasil memuat ${words.length} kata dari kbbi_v.csv`);
+                    return true; // Sinyal sukses
+
+                } catch (error) {
+                    console.error('Error saat memproses CSV:', error.message);
+                    gameBoard.innerHTML = `<p class="col-span-5 text-center text-red-600 font-medium p-4">
+                        <b>FATAL: Gagal memuat data.</b><br>
+                        Pastikan file 'kbbi_v.csv' ada di folder yang sama dengan file HTML ini, lalu muat ulang halaman.
+                        <br><br>
+                        <span class="text-sm text-gray-700 dark:text-gray-400">Error: ${error.message}</span>
+                    </p>`;
+                    keyboardContainer.innerHTML = '';
+                    return false; // Sinyal gagal
+                }
+            }
+
+            // --- Fungsi Penyimpanan & Statistik ---
+            function saveDailyState() {
+                const state = {
+                    dayIndex: dayIndex,
+                    guesses: guesses,
+                    currentRow: currentRow,
+                    isGameOver: isGameOver,
+                    keyStates: keyStates
+                };
+                localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify(state));
+            }
+
+            function loadDailyState() {
+                const stateString = localStorage.getItem(DAILY_STORAGE_KEY);
+                if (!stateString) return null;
+
+                try {
+                    const state = JSON.parse(stateString);
+                    // Cek apakah ini hari yang sama
+                    if (state.dayIndex === dayIndex) {
+                        return state;
+                    } else {
+                        // Hari baru, hapus state lama
+                        localStorage.removeItem(DAILY_STORAGE_KEY);
+                        return null;
+                    }
+                } catch (e) {
+                    console.error("Gagal memuat state harian:", e);
+                    localStorage.removeItem(DAILY_STORAGE_KEY);
+                    return null;
+                }
+            }
+            
+            function loadStats() {
+                const statsString = localStorage.getItem(STATS_STORAGE_KEY);
+                let stats;
+                
+                if (!statsString) {
+                    stats = {
+                        played: 0,
+                        wins: 0,
+                        currentStreak: 0,
+                        maxStreak: 0,
+                        lastDayPlayed: -1 // Indeks hari terakhir bermain
+                    };
+                } else {
+                    try {
+                        stats = JSON.parse(statsString);
+                    } catch (e) {
+                         stats = { played: 0, wins: 0, currentStreak: 0, maxStreak: 0, lastDayPlayed: -1 };
+                    }
+                }
+                
+                // Cek apakah streak harus di-reset karena melewatkan hari
+                // (dayIndex > stats.lastDayPlayed + 1) berarti ada jeda hari
+                if (dayIndex > stats.lastDayPlayed + 1) {
+                    stats.currentStreak = 0;
+                }
+                
+                return stats;
+            }
+            
+            function saveStats(stats) {
+                localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(stats));
+            }
+            
+            function updateStats(didWin) {
+                let stats = loadStats();
+                
+                // Hanya update statistik jika ini adalah permainan baru (bukan load game yg sudah selesai)
+                if (stats.lastDayPlayed === dayIndex) {
+                    // console.log("Statistik hari ini sudah dicatat.");
+                    return; // Sudah dimainkan hari ini
+                }
+
+                stats.played++;
+                stats.lastDayPlayed = dayIndex;
+
+                if (didWin) {
+                    stats.wins++;
+                    stats.currentStreak++;
+                    if (stats.currentStreak > stats.maxStreak) {
+                        stats.maxStreak = stats.currentStreak;
+                    }
+                } else {
+                    stats.currentStreak = 0;
+                }
+                
+                saveStats(stats);
+                displayStats(stats); // Update tampilan setelah disimpan
+            }
+            
+            function displayStats(stats) {
+                if (!stats) stats = loadStats();
+                
+                statStreakEl.textContent = stats.currentStreak;
+                statMaxStreakEl.textContent = stats.maxStreak;
+                statPlayedEl.textContent = stats.played;
+                
+                const winPct = (stats.played > 0) ? Math.round((stats.wins / stats.played) * 100) : 0;
+                statWinPctEl.textContent = winPct;
+            }
+            // --- Akhir Fungsi Statistik ---
+
+
+            // Inisialisasi permainan
+            function initGame() {
+                if (TARGET_WORDS.length === 0) {
+                    isGameOver = true;
+                    return;
+                }
+
+                // Tampilkan statistik saat memuat
+                displayStats();
+                
+                // Pilih kata berdasarkan indeks hari
+                targetWord = TARGET_WORDS[dayIndex % TARGET_WORDS.length];
+                // console.log(`Kata Harian (Hari #${dayIndex}):`, targetWord);
+
+                // Reset status dasar
+                currentRow = 0;
+                currentCol = 0;
+                isGameOver = false;
+                guesses = Array(6).fill(null).map(() => Array(5).fill(""));
+                keyStates = {};
+
+                gameBoard.innerHTML = '';
+                keyboardContainer.innerHTML = '';
+                
+                // Buat papan permainan
+                for (let r = 0; r < 6; r++) {
+                    for (let c = 0; c < 5; c++) {
+                        const tile = document.createElement('div');
+                        tile.id = `tile-${r}-${c}`;
+                        // FIX: Menghapus 'text-gray-900 dark:text-gray-100' untuk membiarkan CSS 'color: white !important' bekerja
+                        tile.className = 'w-14 h-14 sm:w-16 sm:h-16 border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded-md flex items-center justify-center text-3xl font-bold uppercase transition-all duration-300';
+                        gameBoard.appendChild(tile);
+                    }
+                }
+
+                // Buat keyboard
+                const keyRows = [
+                    keys.slice(0, 10),
+                    keys.slice(10, 19),
+                    keys.slice(19)
+                ];
+
+                keyRows.forEach(row => {
+                    const rowEl = document.createElement('div');
+                    rowEl.className = 'flex justify-center gap-1 my-1';
+                    row.forEach(key => {
+                        const keyEl = document.createElement('button');
+                        keyEl.id = `key-${key}`;
+                        keyEl.textContent = key;
+                        keyEl.className = 'h-12 px-2 sm:px-4 rounded-md font-bold uppercase transition-colors duration-200';
+                        
+                        if (key === "ENTER" || key === "BACKSPACE") {
+                            keyEl.classList.add('flex-grow', 'bg-gray-400', 'dark:bg-gray-600', 'hover:bg-gray-500', 'dark:hover:bg-gray-700', 'text-white');
+                            if (key === "BACKSPACE") keyEl.textContent = 'Hapus';
+                            if (key === "ENTER") keyEl.textContent = 'Kirim';
+                        } else {
+                            // Teks dibuat putih di mode gelap
+                            keyEl.classList.add('bg-gray-200', 'dark:bg-gray-500', 'hover:bg-gray-300', 'dark:hover:bg-gray-600', 'text-gray-900', 'dark:text-gray-100');
+                        }
+                        
+                        keyEl.addEventListener('click', () => handleKeyPress(key));
+                        rowEl.appendChild(keyEl);
+                    });
+                    keyboardContainer.appendChild(rowEl);
+                });
+
+                // Coba muat progres hari ini
+                const loadedState = loadDailyState();
+                if (loadedState) {
+                    guesses = loadedState.guesses;
+                    currentRow = loadedState.currentRow;
+                    isGameOver = loadedState.isGameOver;
+                    keyStates = loadedState.keyStates || {};
+                    restoreBoard();
+                    restoreKeyboard();
+                    
+                    if (isGameOver) {
+                        // Jika game sudah selesai, tampilkan pesan akhir
+                        const lastGuess = guesses[currentRow > 0 ? currentRow - 1 : 0].join("");
+                        const details = wordDetails.get(targetWord);
+                        if (lastGuess === targetWord) {
+                            showMessage("Selamat, Anda berhasil!", "win", details);
+                        } else {
+                            showMessage(`Maaf, Anda gagal. Kata: ${targetWord}`, "lose", details);
+                        }
+                    }
+                }
+
+                messageContainer.classList.add('opacity-0');
+                messageEl.className = "px-4 py-2 rounded-md font-medium text-white w-full";
+            }
+
+            // --- Fungsi Restore State ---
+            function restoreBoard() {
+                guesses.forEach((guess, r) => {
+                    if (r < currentRow) { // Hanya untuk baris yang sudah dikirim
+                        const guessWord = guess.join("");
+                        const colors = getGuessColors(guessWord);
+                        guess.forEach((letter, c) => {
+                            const tile = document.getElementById(`tile-${r}-${c}`);
+                            tile.textContent = letter;
+                            tile.classList.add(`tile-${colors[c]}`);
+                        });
+                    }
+                });
+            }
+
+            function restoreKeyboard() {
+                Object.keys(keyStates).forEach(key => {
+                    const keyEl = document.getElementById(`key-${key}`);
+                    if (keyEl) {
+                        keyEl.classList.add(`key-${keyStates[key]}`);
+                    }
+                });
+            }
+            // --- Akhir Fungsi Restore State ---
+
+            // Menangani input (keyboard fisik atau virtual)
+            function handleKeyPress(key) {
+                if (isGameOver) return;
+
+                const upperKey = key.toUpperCase();
+
+                if (upperKey === 'ENTER') {
+                    submitGuess();
+                } else if (upperKey === 'BACKSPACE') {
+                    deleteLetter();
+                } else if (currentCol < 5 && /^[A-Z]$/.test(upperKey)) {
+                    addLetter(upperKey);
+                }
+            }
+
+            // Menambahkan huruf ke kotak
+            function addLetter(letter) {
+                guesses[currentRow][currentCol] = letter;
+                const tile = document.getElementById(`tile-${currentRow}-${currentCol}`);
+                tile.textContent = letter;
+                tile.classList.add('border-gray-500', 'dark:border-gray-400'); // Menandakan kotak aktif
+                currentCol++;
+            }
+
+            // Menghapus huruf dari kotak
+            function deleteLetter() {
+                if (currentCol === 0) return;
+                currentCol--;
+                guesses[currentRow][currentCol] = "";
+                const tile = document.getElementById(`tile-${currentRow}-${currentCol}`);
+                tile.textContent = "";
+                tile.classList.remove('border-gray-500', 'dark:border-gray-400');
+            }
+
+            // Mengirim tebakan
+            function submitGuess() {
+                if (currentCol < 5) {
+                    showMessage("Kata kurang panjang", "error");
+                    shakeRow();
+                    return;
+                }
+
+                const guess = guesses[currentRow].join("");
+
+                if (!VALID_GUESSES.includes(guess)) {
+                    showMessage("Kata tidak ditemukan", "error");
+                    shakeRow();
+                    return;
+                }
+
+                checkGuess(guess);
+            }
+
+            // Fungsi utilitas untuk mendapatkan warna (untuk restore dan check)
+            function getGuessColors(guess) {
+                let targetLetters = [...targetWord];
+                let guessColors = Array(5).fill('absent');
+                
+                // Pass 1: Cari hijau
+                for (let i = 0; i < 5; i++) {
+                    if (guess[i] === targetWord[i]) {
+                        guessColors[i] = 'correct';
+                        targetLetters[i] = null;
+                    }
+                }
+                
+                // Pass 2: Cari kuning
+                for (let i = 0; i < 5; i++) {
+                    if (guessColors[i] === 'correct') continue;
+                    const presentIndex = targetLetters.indexOf(guess[i]);
+                    if (presentIndex !== -1) {
+                        guessColors[i] = 'present';
+                        targetLetters[presentIndex] = null;
+                    }
+                }
+                return guessColors;
+            }
+
+            // Memeriksa tebakan dan memberi umpan balik
+            function checkGuess(guess) {
+                isGameOver = true; // Nonaktifkan input sementara
+                
+                const guessColors = getGuessColors(guess);
+                
+                // Hitung warna keyboard
+                for (let i = 0; i < 5; i++) {
+                    const letter = guess[i];
+                    const color = guessColors[i];
+                    
+                    if (color === 'correct') {
+                        keyStates[letter] = 'correct';
+                    } else if (color === 'present' && keyStates[letter] !== 'correct') {
+                        keyStates[letter] = 'present';
+                    } else if (keyStates[letter] !== 'correct' && keyStates[letter] !== 'present') {
+                        keyStates[letter] = 'absent';
+                    }
+                }
+
+                animateRow(guessColors);
+            }
+
+            // Menerapkan animasi dan warna ke baris dan keyboard
+            function animateRow(guessColors) {
+                const rowTiles = [];
+                for (let c = 0; c < 5; c++) {
+                    rowTiles.push(document.getElementById(`tile-${currentRow}-${c}`));
+                }
+
+                rowTiles.forEach((tile, index) => {
+                    setTimeout(() => {
+                        tile.classList.add(`tile-${guessColors[index]}`);
+                    }, index * 300); 
+                });
+
+                // Update keyboard
+                restoreKeyboard(); // Terapkan semua state keyboard yang diketahui
+
+                // Cek status menang/kalah setelah animasi selesai
+                setTimeout(() => {
+                    checkGameStatus(guessColors.every(c => c === 'correct'));
+                }, 5 * 300);
+            }
+
+            // Memeriksa status permainan (menang/kalah)
+            function checkGameStatus(isWin) {
+                const details = wordDetails.get(targetWord);
+
+                if (isWin) {
+                    showMessage("Selamat, Anda berhasil!", "win", details);
+                    isGameOver = true;
+                    updateStats(true); // Update statistik (menang)
+                } else {
+                    currentRow++;
+                    currentCol = 0;
+                    if (currentRow === 6) {
+                        showMessage(`Maaf, Anda gagal. Kata: ${targetWord}`, "lose", details);
+                        isGameOver = true;
+                        updateStats(false); // Update statistik (kalah)
+                    } else {
+                        isGameOver = false; // Aktifkan input lagi
+                    }
+                }
+                
+                // Simpan progres setiap kali tebakan selesai
+                saveDailyState();
+            }
+
+            // Menampilkan pesan notifikasi
+            function showMessage(msg, type = "default", details = null) {
+                messageEl.innerHTML = ''; // Kosongkan dulu
+                
+                const msgText = document.createElement('p');
+                msgText.textContent = msg;
+                // Pesan utama (Selamat/Maaf) dibuat rata tengah
+                msgText.className = 'text-center font-bold'; 
+                messageEl.appendChild(msgText);
+
+                messageEl.className = "px-4 py-2 rounded-md font-medium text-white w-full";
+
+                if (type === "error") {
+                    messageEl.classList.add('bg-red-500');
+                } else if (type === "win") {
+                    messageEl.classList.add('bg-green-500');
+                } else if (type === "lose") {
+                    // Warna merah untuk pesan kalah
+                    messageEl.classList.add('bg-red-500');
+                }
+
+                // Blok untuk menampilkan detail kata (tetap rata kiri)
+                if (details) {
+                    const detailsEl = document.createElement('div');
+                    detailsEl.className = 'mt-2 pt-2 border-t border-white/50 text-left'; 
+                    
+                    // FIX: Ditambahkan 'details &&' untuk mencegah error saat memuat ulang
+                    const displayClass = (details && details.class && details.class !== "N/A") ? details.class : 'Tidak terdefinisi';
+                    const displayDef = (details && details.definition && details.definition !== "N/A") ? details.definition : 'Tidak terdefinisi';
+
+                    detailsEl.innerHTML = `
+                        <p class="text-sm"><strong>Kelas:</strong> ${displayClass}</p>
+                        <p class="text-sm mt-1"><strong>Makna:</strong> ${displayDef}</p>
+                    `;
+                    messageEl.appendChild(detailsEl);
+                }
+
+                messageContainer.classList.remove('opacity-0');
+                
+                if (type === "error") {
+                    setTimeout(() => {
+                        // Hanya sembunyikan jika pesan masih pesan error yang sama
+                        if (messageEl.contains(msgText)) {
+                           messageContainer.classList.add('opacity-0');
+                        }
+                    }, 3000);
+                }
+            }
+
+            // Animasi goyang (shake) untuk baris saat ini
+            function shakeRow() {
+                for (let c = 0; c < 5; c++) {
+                    const tile = document.getElementById(`tile-${currentRow}-${c}`);
+                    if(tile) {
+                        tile.classList.add('shake');
+                        tile.addEventListener('animationend', () => {
+                            tile.classList.remove('shake');
+                        }, { once: true });
+                    }
+                }
+            }
+            
+            // --- MULAI PERMAINAN ---
+            const gameReady = await loadWordsFromCSV();
+            
+            if (gameReady) {
+                initGame();
+
+                // Listener untuk keyboard fisik
+                document.addEventListener('keydown', (e) => {
+                    let key = e.key;
+                    if (key === 'Enter') key = 'ENTER';
+                    if (key === 'Backspace') key = 'BACKSPACE';
+                    handleKeyPress(key);
+                });
+
+                // Listener untuk tombol Reset (DEV)
+                if (devResetButton) {
+                    devResetButton.addEventListener('click', () => {
+                        if (true) { // Mengganti 'confirm'
+                            console.log("Menghapus data dev...");
+                            localStorage.removeItem(DAILY_STORAGE_KEY);
+                            localStorage.removeItem(STATS_STORAGE_KEY);
+                            location.reload();
+                        }
+                    });
+                }
+            }
+        });
+    </script>
+</body>
+</html>
