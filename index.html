@@ -81,11 +81,6 @@
         <h1 class="text-4xl font-extrabold tracking-tight dark:text-white">TEBAK KATA</h1>
         <p class="text-gray-600 dark:text-gray-400">Versi Bahasa Indonesia (Harian)</p>
         
-        <!-- Tombol Reset (DEV) -->
-        <button id="dev-reset-button" class="absolute right-0 top-0 text-xs text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 font-medium py-1 px-2 rounded-md bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
-            [Dev: Reset]
-        </button>
-
         <!-- Bagian Statistik -->
         <div id="stats-container" class="grid grid-cols-4 gap-2 mt-4 text-gray-800 dark:text-white">
             <div class="bg-gray-200 dark:bg-gray-700 p-2 rounded-lg text-center">
@@ -168,7 +163,6 @@
             const statMaxStreakEl = document.getElementById('stat-max-streak');
             const statPlayedEl = document.getElementById('stat-played');
             const statWinPctEl = document.getElementById('stat-win-pct');
-            const devResetButton = document.getElementById('dev-reset-button');
 
             // Layout keyboard
             const keys = [
@@ -699,18 +693,6 @@
                     if (key === 'Backspace') key = 'BACKSPACE';
                     handleKeyPress(key);
                 });
-
-                // Listener untuk tombol Reset (DEV)
-                if (devResetButton) {
-                    devResetButton.addEventListener('click', () => {
-                        if (true) { // Mengganti 'confirm'
-                            console.log("Menghapus data dev...");
-                            localStorage.removeItem(DAILY_STORAGE_KEY);
-                            localStorage.removeItem(STATS_STORAGE_KEY);
-                            location.reload();
-                        }
-                    });
-                }
             }
         });
     </script>
