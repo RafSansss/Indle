@@ -364,9 +364,13 @@
                 // Tampilkan statistik saat memuat
                 displayStats();
                 
-                // Pilih kata berdasarkan indeks hari
-                targetWord = TARGET_WORDS[dayIndex % TARGET_WORDS.length];
-                // console.log(`Kata Harian (Hari #${dayIndex}):`, targetWord);
+                // *** INI PERBAIKANNYA ***
+                // Alih-alih mengambil urutan, kita "acak" indeksnya
+                // 131 adalah angka prima yang membantu membuat lompatan "pseudo-random"
+                const scrambledIndex = (dayIndex * 131) % TARGET_WORDS.length;
+                targetWord = TARGET_WORDS[scrambledIndex];
+                
+                // console.log(`Kata Harian (Hari #${dayIndex}, Indeks Acak #${scrambledIndex}):`, targetWord);
 
                 // Reset status dasar
                 currentRow = 0;
