@@ -364,7 +364,6 @@
                 // Tampilkan statistik saat memuat
                 displayStats();
                 
-                // *** INI PERBAIKANNYA ***
                 // Alih-alih mengambil urutan, kita "acak" indeksnya
                 // 131 adalah angka prima yang membantu membuat lompatan "pseudo-random"
                 const scrambledIndex = (dayIndex * 131) % TARGET_WORDS.length;
@@ -436,7 +435,16 @@
                     
                     if (isGameOver) {
                         // Jika game sudah selesai, tampilkan pesan akhir
-                        const lastGuess = guesses[currentRow > 0 ? currentRow - 1 : 0].join("");
+                        
+                        // FIX 3: Logika untuk mendapatkan tebakan terakhir saat memuat
+                        let lastGuessIndex = currentRow;
+                        // Jika kalah, currentRow adalah 6 (di luar batas), jadi tebakan terakhir ada di 5
+                        if (currentRow === 6) { 
+                            lastGuessIndex = 5;
+                        }
+                        // Jika menang, currentRow adalah indeks baris kemenangan (mis: 2)
+                        const lastGuess = guesses[lastGuessIndex].join("");
+                        
                         const details = wordDetails.get(targetWord);
                         if (lastGuess === targetWord) {
                             showMessage("Selamat, Anda berhasil!", "win", details);
@@ -444,16 +452,19 @@
                             showMessage(`Maaf, Anda gagal. Kata: ${targetWord}`, "lose", details);
                         }
                     }
+                } else {
+                    // FIX 2: Hanya sembunyikan pesan jika ini permainan BARU
+                    messageContainer.classList.add('opacity-0');
                 }
 
-                messageContainer.classList.add('opacity-0');
                 messageEl.className = "px-4 py-2 rounded-md font-medium text-white w-full";
             }
 
             // --- Fungsi Restore State ---
             function restoreBoard() {
                 guesses.forEach((guess, r) => {
-                    if (r < currentRow) { // Hanya untuk baris yang sudah dikirim
+                    // FIX 1: Logika diubah. Warnai baris manapun yang sudah ditebak.
+                    if (guess.join("") !== "") { 
                         const guessWord = guess.join("");
                         const colors = getGuessColors(guessWord);
                         guess.forEach((letter, c) => {
@@ -606,8 +617,9 @@
                     showMessage("Selamat, Anda berhasil!", "win", details);
                     isGameOver = true;
                     updateStats(true); // Update statistik (menang)
+                    // (currentRow tetap di indeks kemenangan)
                 } else {
-                    currentRow++;
+                    currentRow++; // Pindah ke baris berikutnya
                     currentCol = 0;
                     if (currentRow === 6) {
                         showMessage(`Maaf, Anda gagal. Kata: ${targetWord}`, "lose", details);
