@@ -366,7 +366,7 @@
                 // Tampilkan statistik saat memuat
                 displayStats();
                 
-                // Alih-alih mengambil urutan, kita "acak" indeksnya
+                // BUGFIX: Alih-alih mengambil urutan, kita "acak" indeksnya
                 // 131 adalah angka prima yang membantu membuat lompatan "pseudo-random"
                 const scrambledIndex = (dayIndex * 131) % TARGET_WORDS.length;
                 targetWord = TARGET_WORDS[scrambledIndex];
@@ -438,41 +438,70 @@
                     if (isGameOver) {
                         // Jika game sudah selesai, tampilkan pesan akhir
                         
-                        // FIX 3: Logika untuk mendapatkan tebakan terakhir saat memuat
+                        // FIX: Logika untuk mendapatkan tebakan terakhir saat memuat
                         let lastGuessIndex = currentRow;
                         // Jika kalah, currentRow adalah 6 (di luar batas), jadi tebakan terakhir ada di 5
-                        if (currentRow === 6) { 
-                            lastGuessIndex = 5;
+                        // Jika menang, currentRow adalah indeks baris kemenangan (mis: 2), tapi kita perlu tebakan di [2]
+                        
+                        // Logika yang lebih aman: cari baris terakhir yang tidak kosong
+                        let lastValidRow = guesses.filter(g => g.join('') !== '');
+                        let lastGuess = "";
+                        if (lastValidRow.length > 0) {
+                             lastGuess = lastValidRow[lastValidRow.length - 1].join('');
                         }
-                        // Jika menang, currentRow adalah indeks baris kemenangan (mis: 2)
-                        const lastGuess = guesses[lastGuessIndex].join("");
+                        
+                        // Tambahkan pengaman ekstra
+                        if (lastGuessIndex >= 6) lastGuessIndex = 5;
+                        if (guesses[lastGuessIndex].join('') === '') {
+                           lastGuessIndex = Math.max(0, currentRow - 1);
+                        }
+                        // Ganti dengan logika yang lebih aman jika 'lastGuess' masih kosong
+                        if(lastGuess === "") {
+                            lastGuess = guesses[lastGuessIndex].join("");
+                        }
                         
                         const details = wordDetails.get(targetWord);
-                        if (lastGuess === targetWord) {
+                        
+                        // FIX: Tambahkan 'details &&' untuk mencegah error aneh saat memuat
+                        if (details && lastGuess === targetWord) {
                             showMessage("Selamat, Anda berhasil!", "win", details);
-                        } else {
+                        } else if (details) {
                             showMessage(`Maaf, Anda gagal. Kata: ${targetWord}`, "lose", details);
+                        } else if (!details) {
+                            // Fallback jika 'details' tidak ada
+                            if (lastGuess === targetWord) {
+                                showMessage("Selamat, Anda berhasil!", "win", { class: 'N/A', definition: 'N/A' });
+                            } else {
+                                showMessage(`Maaf, Anda gagal. Kata: ${targetWord}`, "lose", { class: 'N/A', definition: 'N/A' });
+                            }
                         }
                     }
                 } else {
                     // FIX 2: Hanya sembunyikan pesan jika ini permainan BARU
                     messageContainer.classList.add('opacity-0');
+                    // FIX TERBARU: Baris ini dipindahkan ke sini agar tidak me-reset
+                    // warna 'win'/'lose' saat memuat ulang.
+                    messageEl.className = "px-4 py-2 rounded-md font-medium text-white w-full";
                 }
 
-                messageEl.className = "px-4 py-2 rounded-md font-medium text-white w-full";
+                // Baris ini DIPINDAHKAN ke dalam 'else' di atas
+                // messageEl.className = "px-4 py-2 rounded-md font-medium text-white w-full";
             }
 
             // --- Fungsi Restore State ---
             function restoreBoard() {
                 guesses.forEach((guess, r) => {
-                    // FIX 1: Logika diubah. Warnai baris manapun yang sudah ditebak.
+                    // FIX: Logika diubah. Warnai baris manapun yang sudah ditebak.
                     if (guess.join("") !== "") { 
                         const guessWord = guess.join("");
                         const colors = getGuessColors(guessWord);
                         guess.forEach((letter, c) => {
                             const tile = document.getElementById(`tile-${r}-${c}`);
-                            tile.textContent = letter;
-                            tile.classList.add(`tile-${colors[c]}`);
+                            // Pengaman jika tile tidak ditemukan (seharusnya tidak terjadi)
+                            if (tile) { 
+                                tile.textContent = letter;
+                                tile.classList.add(`tile-${colors[c]}`);
+                            }
                         });
                     }
                 });
@@ -652,7 +681,10 @@
                 msgText.className = 'text-center font-bold'; 
                 messageEl.appendChild(msgText);
 
-                messageEl.className = "px-4 py-2 rounded-md font-medium text-white w-full";
+                // Pastikan kelas dasar ada, tapi jangan timpa kelas warna
+                if (!messageEl.classList.contains('bg-green-500') && !messageEl.classList.contains('bg-red-500')) {
+                    messageEl.className = "px-4 py-2 rounded-md font-medium text-white w-full";
+                }
 
                 if (type === "error") {
                     messageEl.classList.add('bg-red-500');
@@ -686,6 +718,8 @@
                         // Hanya sembunyikan jika pesan masih pesan error yang sama
                         if (messageEl.contains(msgText)) {
                            messageContainer.classList.add('opacity-0');
+                           // Hapus kelas error setelah hilang
+                           messageEl.classList.remove('bg-red-500');
                         }
                     }, 3000);
                 }
